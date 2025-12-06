@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jarvis Interface</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body {
+            background-color: #000;
+            height: 100vh;
+            width: 100vw;
+            margin: 0;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Segoe UI', sans-serif;
+            color: white;
+        }
+
+        /* --- Canvas Background --- */
+        .video-call-canvas {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: radial-gradient(circle at center, #1a2a3a 0%, #000000 100%);
+        }
+
+        /* --- Jarvis Arc Reactor --- */
+        .jarvis-core {
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            border: 2px solid #00d2ff;
+            box-shadow: 0 0 20px #00d2ff, inset 0 0 20px #00d2ff;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.3s ease;
+        }
+
+        .jarvis-core::after {
+            content: '';
+            width: 160px;
+            height: 160px;
+            border-radius: 50%;
+            border: 1px dashed #fff;
+            position: absolute;
+            animation: spin 10s infinite linear;
+        }
+
+        .core-center {
+            width: 50px;
+            height: 50px;
+            background: #fff;
+            border-radius: 50%;
+            box-shadow: 0 0 30px #00d2ff;
+        }
+
+        /* --- Animations --- */
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+        
+        .speaking { animation: pulse 0.5s infinite; border-color: #00d2ff; box-shadow: 0 0 50px #00d2ff; }
+        .listening { border-color: #2ecc71; box-shadow: 0 0 30px #2ecc71, inset 0 0 30px #2ecc71; }
+        .processing { border-color: #f1c40f; box-shadow: 0 0 30px #f1c40f; }
+
+        /* --- User Self-View --- */
+        .user-preview {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 100px;
+            height: 140px;
+            background-color: #333;
+            border-radius: 15px;
+            border: 2px solid #555;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+        }
+
+        /* --- Status & Subtitles --- */
+        .status-text {
+            margin-top: 30px;
+            font-size: 1.2rem;
+            letter-spacing: 2px;
+            color: #00d2ff;
+            text-transform: uppercase;
+            text-shadow: 0 0 10px #00d2ff;
+            font-weight: bold;
+        }
+
+        .subtitle-box {
+            margin-top: 15px;
+            width: 80%;
+            text-align: center;
+            font-size: 1rem;
+            color: #ddd;
+            min-height: 50px;
+            text-shadow: 1px 1px 2px black;
+        }
+
+        /* --- Controls --- */
+        .controls-container {
+            position: absolute;
+            bottom: 40px;
+            display: flex;
+            gap: 40px;
+            z-index: 100;
+        }
+
+        .call-btn {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            font-size: 1.8rem;
+            color: white;
+            transition: transform 0.2s;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .call-btn:active { transform: scale(0.95); }
+        .btn-mic { background-color: #2ecc71; box-shadow: 0 0 15px #2ecc71; }
+        .btn-cam { background-color: #3498db; box-shadow: 0 0 15px #3498db; }
+        .btn-off { background-color: #e74c3c; box-shadow: none; color: #ccc; }
+
+    </style>
+</head>
+<body>
+
+    <div class="video-call-canvas">
+        <div class="user-preview" id="userPreview"><i class="fas fa-user fa-2x" style="color:#666"></i></div>
+        
+        <!-- Jarvis Visual -->
+        <div class="jarvis-core" id="jarvisCore">
+            <div class="core-center"></div>
+        </div>
+
+        <div class="status-text" id="statusText">System Online</div>
+        <div class="subtitle-box" id="subtitleBox"></div>
+
+        <!-- Buttons -->
+        <div class="controls-container">
+            <!-- Green Mic Button -->
+            <button class="call-btn btn-mic" id="micBtn" onclick="toggleMic()">
+                <i class="fas fa-microphone" id="micIcon"></i>
+            </button>
+
+            <!-- Blue Camera Button -->
+            <button class="call-btn btn-cam" id="camBtn" onclick="toggleCam()">
+                <i class="fas fa-video" id="camIcon"></i>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const micBtn = document.getElementById('micBtn');
+        const jarvisCore = document.getElementById('jarvisCore');
+        const statusText = document.getElementById('statusText');
+        const subtitleBox = document.getElementById('subtitleBox');
+        
+        let isListening = false;
+        
+        // --- SPEECH RECOGNITION SETUP ---
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.lang = 'en-US';
+
+        recognition.onstart = function() {
+            statusText.innerText = "Listening...";
+            jarvisCore.className = "jarvis-core listening";
+            subtitleBox.innerText = "";
+        };
+
+        recognition.onend = function() {
+            // Stop animation if we are simply done listening and not yet processing
+            if (statusText.innerText === "Listening...") {
+                jarvisCore.className = "jarvis-core";
+                statusText.innerText = "Online";
+                isListening = false;
+            }
+        };
+
+        recognition.onresult = async function(event) {
+            const transcript = event.results[0][0].transcript;
+            console.log("User heard:", transcript);
+            
+            statusText.innerText = "Processing...";
+            jarvisCore.className = "jarvis-core processing";
+            subtitleBox.innerText = `You: "${transcript}"`;
+
+            // Stop recognition so it doesn't hear itself
+            recognition.stop();
+            isListening = false;
+
+            // Send to Python
+            await sendToAI(transcript);
+        };
+
+        // --- TOGGLE MICROPHONE ---
+        function toggleMic() {
+            if (!isListening) {
+                // Ensure audio context is ready (Chrome fix)
+                window.speechSynthesis.cancel(); 
+                recognition.start();
+                isListening = true;
+            } else {
+                recognition.stop();
+                isListening = false;
+                statusText.innerText = "Online";
+                jarvisCore.className = "jarvis-core";
+            }
+        }
+
+        // --- SEND TO BACKEND ---
+        async function sendToAI(message) {
+            try {
+                const response = await fetch('/ask', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: message })
+                });
+                
+                const data = await response.json();
+                
+                // Show text immediately
+                subtitleBox.innerText = data.reply;
+                statusText.innerText = "Speaking...";
+                
+                // Speak audio
+                speakOutLoud(data.reply);
+
+            } catch (error) {
+                console.error("Error:", error);
+                statusText.innerText = "Error";
+                subtitleBox.innerText = "Check Python Server Terminal for details.";
+                jarvisCore.className = "jarvis-core";
+            }
+        }
+
+        // --- TEXT TO SPEECH (FIXED) ---
+        function speakOutLoud(text) {
+            // 1. Cancel any previous stuck audio
+            window.speechSynthesis.cancel();
+
+            // 2. Create the speech object
+            const speech = new SpeechSynthesisUtterance(text);
+            
+            // 3. Try to get voices
+            let voices = window.speechSynthesis.getVoices();
+            // Optional: Try to pick a specific voice if available
+            let preferredVoice = voices.find(v => v.lang.includes('en-US') && v.name.includes('Male')) || voices[0];
+            if (preferredVoice) speech.voice = preferredVoice;
+
+            speech.lang = 'en-US';
+            speech.rate = 1;
+            speech.pitch = 1;
+
+            // 4. Animation while speaking
+            jarvisCore.className = "jarvis-core speaking";
+
+            speech.onend = function() {
+                statusText.innerText = "Online";
+                jarvisCore.className = "jarvis-core";
+            };
+
+            speech.onerror = function(e) {
+                console.error("Audio Error", e);
+                statusText.innerText = "Audio Error";
+            };
+
+            // 5. Play
+            window.speechSynthesis.speak(speech);
+        }
+
+        // Force load voices (Chrome bug fix)
+        window.speechSynthesis.onvoiceschanged = function() {
+            window.speechSynthesis.getVoices();
+        };
+
+        // --- CAMERA TOGGLE ---
+        let isCamOn = true;
+        function toggleCam() {
+            isCamOn = !isCamOn;
+            const btn = document.getElementById('camBtn');
+            const icon = document.getElementById('camIcon');
+            const preview = document.getElementById('userPreview');
+
+            if (isCamOn) {
+                btn.className = "call-btn btn-cam";
+                icon.className = "fas fa-video";
+                preview.style.backgroundColor = "#333";
+            } else {
+                btn.className = "call-btn btn-off";
+                icon.className = "fas fa-video-slash";
+                preview.style.backgroundColor = "#000";
+            }
+        }
+    </script>
+</body>
+</html>
